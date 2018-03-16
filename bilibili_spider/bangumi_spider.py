@@ -7,6 +7,8 @@ import requests
 import time
 import csv
 import os
+import io
+import sys
 from pprint import pprint
 
 def log(msg, is_init=False):
@@ -27,10 +29,10 @@ class BangumiSpider(requests.Session):
 		self.bangumis = []
 		self.bangumis_info = {}
 		self.counter = 0
-		self.max_num = 20
+		self.max_num = 3000
 		self.data = {
 				'page':1,			# 第几页
-				'page_size':20,		# 每页的数量
+				'page_size':100,		# 每页的数量
 				'version':0, 		# 类型： 全部 正片 剧场版 其他 [0 - 4]
 				'is_finish':0,		# 状态： 全部 完结 连载 [0 2 1]
 				'start_year':year, 	# 时间： 全部 某一年 [0 xxxx]
@@ -40,6 +42,8 @@ class BangumiSpider(requests.Session):
 				'area':0,			# 地区: 全部 日本 美国 其他 [0 2 3 4]
 				'quarter':season,	# 季度： 全部 1月 4月 7月 10月 [0 - 4]
 			}
+		self.data['page_size'] = int(self.data['page_size']/20)*20
+		if self.data['page_size'] < 20: self.data['page_size'] = 20
 		self.headers = ['season_id',		# 番剧ID
 						'title',			# 番剧名
 						'play_count',		# 播放量
@@ -66,11 +70,27 @@ class BangumiSpider(requests.Session):
 		except:
 			self.csv_file = './bangumi_total.csv'
 
+	def _bangumis_info_fill(self, season_id):
+		self.bangumis_info[season_id]['play_count'] = ''
+		self.bangumis_info[season_id]['danmaku_count'] = ''
+		self.bangumis_info[season_id]['coins'] = ''
+		self.bangumis_info[season_id]['score'] = ''
+		self.bangumis_info[season_id]['actor'] = []
+		self.bangumis_info[season_id]['area'] = ''
+		self.bangumis_info[season_id]['copyright'] = ''
+		self.bangumis_info[season_id]['arealimit'] = ''
+		self.bangumis_info[season_id]['aid'] = ''
+		self.bangumis_info[season_id]['tags'] = []
+		self.bangumis_info[season_id]['pub_time'] = ''
+		self.bangumis_info[season_id]['copyright'] = ''
+
 	def run(self):	
 		while self.counter < self.max_num :
+			self.bangumis_info.clear()
+			self.bangumis.clear()
 			json_data = self._get_bangumi_data()
-			self.data['page'] += 1 
-			if len(json_data) is not 0:
+			self.data['page'] += int(self.data['page_size']/20)
+			if len(json_data) == 3:
 				self._add_bangumi_list(json_data)
 				self._get_bangumi_desc()
 				self._dump_to_csv()
@@ -87,19 +107,7 @@ class BangumiSpider(requests.Session):
 			self.bangumis_info[item['season_id']] = item
 			self.bangumis.append(item['season_id'])
 
-	def _add_desc_infor(self, data, season_id):
-		self.bangumis_info[season_id]['play_count'] = ''
-		self.bangumis_info[season_id]['danmaku_count'] = ''
-		self.bangumis_info[season_id]['coins'] = ''
-		self.bangumis_info[season_id]['score'] = ''
-		self.bangumis_info[season_id]['actor'] = ''
-		self.bangumis_info[season_id]['area'] = ''
-		self.bangumis_info[season_id]['copyright'] = ''
-		self.bangumis_info[season_id]['arealimit'] = ''
-		self.bangumis_info[season_id]['aid'] = ''
-		self.bangumis_info[season_id]['tags'] = ''
-		self.bangumis_info[season_id]['pub_time'] = ''
-		self.bangumis_info[season_id]['copyright'] = ''
+	def _add_desc_infor(self, data, season_id):		
 		if data is not None:
 			data_info = eval(data[data.find('{'):-2])['result']
 			self.bangumis_info[season_id]['play_count'] = data_info['play_count']
@@ -113,26 +121,28 @@ class BangumiSpider(requests.Session):
 			self.bangumis_info[season_id]['tags'] = [tag['tag_name'] for tag in data_info['tags']]
 			self.bangumis_info[season_id]['pub_time'] = data_info['pub_time']
 			self.bangumis_info[season_id]['copyright'] = data_info['copyright']
-			try:
-				self.bangumis_info[season_id]['score'] = data_info['media']['rating']['score']
-			except:
-				pass
+			self.bangumis_info[season_id]['score'] = data_info['media']['rating']['score']
+			self.bangumis_info[season_id]['title'] = data_info['bangumi_title']
 		# pprint(self.bangumis_info[season_id])
 
 	def _get_bangumi_desc(self):
 		for season_id in self.bangumis:
 			url = 'http://bangumi.bilibili.com/jsonp/seasoninfo/'+str(season_id)+'.ver?callback=seasonListCallback'
+			# url = 'http://bangumi.bilibili.com/jsonp/seasoninfo/'+str(4294)+'.ver?callback=seasonListCallback'
 			time.sleep(0.1)
 			self.counter += 1
+			self._bangumis_info_fill(season_id)
 			try:
 				req = self.get(url, timeout = 1)
 				req.raise_for_status()
 				req.encoding = req.apparent_encoding
-				self._add_desc_infor(req.text, season_id)
+				try:
+					self._add_desc_infor(req.text, season_id)
+				except:
+					pass
 				log(str(self.counter)+'  Get OK!: '+self.bangumis_info[season_id]['title'])
-				# break
 			except:
-				self._add_desc_infor(None, season_id)
+				self.bangumis_info[season_id]['title'] = ''
 				log('Get data fail!: '+url)
 				continue
 
@@ -155,7 +165,12 @@ class BangumiSpider(requests.Session):
 				writer.writerow(self.headers)
 			for item in data_list:
 				row = self._generate_csv_line(item)
-				writer.writerow(row)
+				try:
+					writer.writerow(row)
+				except:
+					row[-1] = ''
+					log('except: '+row[0])
+					writer.writerow(row)
 
 	def _generate_csv_line(self, item):
 		row = []
