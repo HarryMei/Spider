@@ -89,12 +89,13 @@ class BangumiSpider(requests.Session):
 			self.bangumis_info.clear()
 			self.bangumis.clear()
 			json_data = self._get_bangumi_data()
-			self.data['page'] += int(self.data['page_size']/20)
+			self.data['page'] += 1
 			if len(json_data) == 3:
 				self._add_bangumi_list(json_data)
 				self._get_bangumi_desc()
 				self._dump_to_csv()
 			else:
+				log('')
 				break
 		# pprint(self.bangumis_info)
 
@@ -121,8 +122,11 @@ class BangumiSpider(requests.Session):
 			self.bangumis_info[season_id]['tags'] = [tag['tag_name'] for tag in data_info['tags']]
 			self.bangumis_info[season_id]['pub_time'] = data_info['pub_time']
 			self.bangumis_info[season_id]['copyright'] = data_info['copyright']
-			self.bangumis_info[season_id]['score'] = data_info['media']['rating']['score']
-			self.bangumis_info[season_id]['title'] = data_info['bangumi_title']
+			try:
+				self.bangumis_info[season_id]['score'] = data_info['media']['rating']['score']
+			except:
+				pass
+			# self.bangumis_info[season_id]['title'] = data_info['bangumi_title']
 		# pprint(self.bangumis_info[season_id])
 
 	def _get_bangumi_desc(self):
@@ -135,14 +139,14 @@ class BangumiSpider(requests.Session):
 			try:
 				req = self.get(url, timeout = 1)
 				req.raise_for_status()
-				req.encoding = req.apparent_encoding
+				req.encoding = req.apparent_encoding				
+				self._add_desc_infor(req.text, season_id)
 				try:
-					self._add_desc_infor(req.text, season_id)
+					log(str(self.counter)+'  Get OK!: '+self.bangumis_info[season_id]['title'])
 				except:
-					pass
-				log(str(self.counter)+'  Get OK!: '+self.bangumis_info[season_id]['title'])
+					self.bangumis_info[season_id]['title'] = ''
+					log(str(self.counter)+'  Get OK! (Session ID):'+self.bangumis_info[season_id]['season_id'])
 			except:
-				self.bangumis_info[season_id]['title'] = ''
 				log('Get data fail!: '+url)
 				continue
 
@@ -151,6 +155,7 @@ class BangumiSpider(requests.Session):
 			req = self.get(self.index_url, params = self.data, timeout = 1)
 			req.raise_for_status()
 			req.encoding = req.apparent_encoding
+			log('Get bangumi page: '+str(self.data['page'])+' OK!')
 			return req.json()		
 		except:
 			log('Get bangumi fail!')
@@ -169,7 +174,7 @@ class BangumiSpider(requests.Session):
 					writer.writerow(row)
 				except:
 					row[-1] = ''
-					log('except: '+row[0])
+					log('Write file encode error: '+row[0])
 					writer.writerow(row)
 
 	def _generate_csv_line(self, item):
