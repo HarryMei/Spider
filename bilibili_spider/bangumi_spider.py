@@ -15,10 +15,10 @@ def log(msg, is_init=False):
 	print(msg)
 	msg += '\n'
 	if is_init:
-		with open('./log.txt', 'w') as f:
+		with open('./log.txt', 'w', encoding='utf8') as f:
 			f.write(msg)  
 	else:
-		with open('./log.txt', 'a') as f:
+		with open('./log.txt', 'a', encoding='utf8') as f:
 			f.write(msg)  
 
 class BangumiSpider(requests.Session):
@@ -29,7 +29,7 @@ class BangumiSpider(requests.Session):
 		self.bangumis = []
 		self.bangumis_info = {}
 		self.counter = 0
-		self.max_num = 3000
+		self.max_num = 3100
 		self.data = {
 				'page':1,			# 第几页
 				'page_size':100,		# 每页的数量
@@ -94,8 +94,10 @@ class BangumiSpider(requests.Session):
 				self._add_bangumi_list(json_data)
 				self._get_bangumi_desc()
 				self._dump_to_csv()
+				if len(self.bangumis_info) < self.data['page_size']:
+					log('Finish')
+					break
 			else:
-				log('')
 				break
 		# pprint(self.bangumis_info)
 
@@ -126,13 +128,11 @@ class BangumiSpider(requests.Session):
 				self.bangumis_info[season_id]['score'] = data_info['media']['rating']['score']
 			except:
 				pass
-			# self.bangumis_info[season_id]['title'] = data_info['bangumi_title']
 		# pprint(self.bangumis_info[season_id])
 
 	def _get_bangumi_desc(self):
 		for season_id in self.bangumis:
 			url = 'http://bangumi.bilibili.com/jsonp/seasoninfo/'+str(season_id)+'.ver?callback=seasonListCallback'
-			# url = 'http://bangumi.bilibili.com/jsonp/seasoninfo/'+str(4294)+'.ver?callback=seasonListCallback'
 			time.sleep(0.1)
 			self.counter += 1
 			self._bangumis_info_fill(season_id)
@@ -144,7 +144,7 @@ class BangumiSpider(requests.Session):
 				try:
 					log(str(self.counter)+'  Get OK!: '+self.bangumis_info[season_id]['title'])
 				except:
-					self.bangumis_info[season_id]['title'] = ''
+					# self.bangumis_info[season_id]['title'] = ''
 					log(str(self.counter)+'  Get OK! (Session ID):'+self.bangumis_info[season_id]['season_id'])
 			except:
 				log('Get data fail!: '+url)
@@ -164,7 +164,7 @@ class BangumiSpider(requests.Session):
 	def _dump_to_csv(self):
 		file_exist = os.path.exists(self.csv_file)
 		data_list = list(self.bangumis_info.values())
-		with open(self.csv_file, 'a', newline='') as f:
+		with open(self.csv_file, 'a', newline='', encoding='utf8') as f:
 			writer = csv.writer(f)
 			if not file_exist:
 				writer.writerow(self.headers)
